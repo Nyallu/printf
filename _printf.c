@@ -1,48 +1,90 @@
 #include "main.h"
 
+void cleanup(va_list args, buffer_t *output);
+int run_printf(const char *format, va_list args, buffer_t *output);
+int _printf(const char *format, ...);
+
 /**
- * _printf - main printf function
- * @format: string parameter
+ * cleanup - Peforms cleanup operations for _printf.
+ * @args: A va_list of arguments provided to _printf.
+ * @output: A buffer_t struct.
+ */
+void cleanup(va_list args, buffer_t *output)
+{
+	va_end(args);
+	write(1, output->start, output->len);
+	free_buffer(output);
+}
+
+/**
+ * run_printf - Reads through the format string for _printf.
+ * @format: Character string to print - may contain directives.
+ * @output: A buffer_t struct containing a buffer.
+ * @args: A va_list of arguments.
  *
- * Return: count of characters in @format
+ * Return: The number of characters stored to output.
+ */
+int run_printf(const char *format, va_list args, buffer_t *output)
+{
+	int i, wid, prec, ret = 0;
+	char tmp;
+	unsigned char flags, len;
+	unsigned int (*f)(va_list, buffer_t *,
+			unsigned char, int, int, unsigned char);
+
+	for (i = 0; *(format + i); i++)
+	{
+		len = 0;
+		if (*(format + i) == '%')
+		{
+			tmp = 0;
+			flags = handle_flags(format + i + 1, &tmp);
+			wid = handle_width(args, format + i + tmp + 1, &tmp);
+			prec = handle_precision(args, format + i + tmp + 1,
+					&tmp);
+			len = handle_length(format + i + tmp + 1, &tmp);
+
+			f = handle_specifiers(format + i + tmp + 1);
+			if (f != NULL)
+			{
+				i += tmp + 1;
+				ret += f(args, output, flags, wid, prec, len);
+				continue;
+			}
+			else if (*(format + i + tmp + 1) == '\0')
+			{
+				ret = -1;
+				break;
+			}
+		}
+		ret += _memcpy(output, (format + i), 1);
+		i += (len != 0) ? 1 : 0;
+	}
+	cleanup(args, output);
+	return (ret);
+}
+
+/**
+ * _printf - Outputs a formatted string.
+ * @format: Character string to print - may contain directives.
+ *
+ * Return: The number of characters printed.
  */
 int _printf(const char *format, ...)
 {
+	buffer_t *output;
 	va_list args;
-	const char *str;
-	int (*func)(va_list, flag_t *, mod_t *);
-	flag_t f = {0, 0, 0};
-	mod_t m = {0, 0, 0};
-	int i, count = 0, num = 0;
+	int ret;
+
+	if (format == NULL)
+		return (-1);
+	output = init_buffer();
+	if (output == NULL)
+		return (-1);
 
 	va_start(args, format);
-	if (!format || (format[0] == '%' && !format[1]))
-		return (-1);
-	if (format[0] == '%' && format[1] == ' ' && !format[2])
-		return (-1);
-	for (str = format; *str; str++)
-	{
-		if (*str == '%')
-		{
-			str++;
-			if (*str == '%')
-			{
-				count += _putchar('%');
-				continue;
-			}
-			for (; get_flags(*str, &f); str++)
-			{}
-			for (i = 0; *str >= 48 && *str <= 57; str++, i++)
-				num = (num * (i * 10)) + (*str - '0');
-			set_width(num, &m);
-			for (; get_modifier(*str, &m); str++)
-			{}
-			func = get_func(*str);
-			count += (func) ? func(args, &f, &m)
-					: _printf("%%%c", *str);
-		} else
-			count += _putchar(*str);
-	}
-	_putchar(-1), va_end(args);
-	return (count);
+
+	ret = run_printf(format, args, output);
+
+	return (ret);
 }
